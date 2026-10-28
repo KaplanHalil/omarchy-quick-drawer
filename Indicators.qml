@@ -127,6 +127,14 @@ BarWidget {
 
   readonly property bool hasHostedTiles: root.hasHostedTile()
 
+  // Three equal square cells that always fit the card's content width. Using
+  // the Tile's implicit width here made the right column overflow the card at
+  // some spacing scales, which cut off its border and labels.
+  readonly property int gridColumns: 3
+  readonly property real gridSpacing: Style.space(8)
+  readonly property real gridTileWidth: Math.max(1,
+    Math.floor((gridScroll.width - (gridColumns - 1) * gridSpacing) / gridColumns))
+
   implicitWidth: mark.implicitWidth
   implicitHeight: mark.implicitHeight
 
@@ -1230,8 +1238,8 @@ BarWidget {
           Grid {
             id: gridContent
             width: gridScroll.width
-            columns: 3
-            spacing: Style.space(8)
+            columns: root.gridColumns
+            spacing: root.gridSpacing
 
             Repeater {
               model: root.displayItems
@@ -1239,6 +1247,8 @@ BarWidget {
               delegate: Tile {
                 required property var modelData
                 required property int index
+                width: root.gridTileWidth
+                height: root.gridTileWidth
                 bar: root.bar
                 icon: root.tileIcon(modelData)
                 label: root.tileLabel(modelData)
