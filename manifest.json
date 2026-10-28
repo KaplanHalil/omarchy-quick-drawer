@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.kaplanhalil.quickdrawer",
+  "name": "Quick Drawer",
+  "version": "1.0.0",
+  "author": "Halil Kaplan",
+  "license": "MIT",
+  "description": "A centered quick-toggle drawer for the Omarchy bar, with a tile catalogue and custom command tiles.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Indicators.qml"
+  },
+  "barWidget": {
+    "displayName": "Quick Drawer",
+    "description": "Caffeine, night light, DND, screensaver, suspend and more in one centered drawer",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "items": [
+        "caffeine",
+        "nightlight",
+        "dnd",
+        "screensaver",
+        "suspend"
+      ]
+    }
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.indicators"
+  }
+}
