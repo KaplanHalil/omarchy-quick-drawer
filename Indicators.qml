@@ -36,6 +36,10 @@ BarWidget {
   // Runtime records for bar widgets whose icon is hidden while their panel is
   // available from the drawer. See applyPanelHosting().
   property var panelHostRecords: []
+  // Installed plugin metadata (omarchy plugin list --json) and the subset we
+  // can place in the drawer as extension tiles.
+  property var extensionPlugins: []
+  property var extensionTiles: []
 
   readonly property var defaultItems: ["caffeine", "nightlight", "dnd", "screensaver", "suspend"]
   // Settings are injected after the widget is created. A plain var binding on
@@ -56,6 +60,41 @@ BarWidget {
     { id: "reminders", label: "Reminders", icon: "󰢌", description: "Open your reminders", kind: "action" }
   ]
 
+  // Bar widgets that do not make sense as one tile, or already have a core
+  // tile above. The tray and spacer are special rather than general widgets.
+  readonly property var extensionBlocklist: [
+    "io.github.kaplanhalil.quickdrawer",
+    "io.github.ehlxr.advanced-workspaces",
+    "jrmmhm.pocket",
+    "omarchy.spacer",
+    "omarchy.tray",
+    "omarchy.workspaces",
+    "omarchy.indicators",
+    "omarchy.audio",
+    "omarchy.network",
+    "omarchy.power",
+    "omarchy.monitor"
+  ]
+
+  readonly property var firstPartyIcons: ({
+    "omarchy.clock": "󰥔",
+    "omarchy.weather": "󰖐",
+    "omarchy.agents": "󰚩",
+    "omarchy.system-update": "󰚰",
+    "omarchy.keyboard-layout": "󰌌",
+    "omarchy.menu": "󰍜"
+  })
+
+  readonly property var thirdPartyIcons: ({
+    "io.github.kaplanhalil.gazette": "\uf09e",
+    "io.github.kaplanhalil.topstats": "\uf2db",
+    "jankeesvw.notification-center": "󰂚",
+    "ubeyidah.omaclock": "󰥔",
+    "siob.power-actions": "󰐥",
+    "io.github.twiking.omasettings": "\uf013",
+    "omaplug": "\uf1e6"
+  })
+
   readonly property bool caffeineOn: idleService ? idleService.stayAwake === true : false
   readonly property bool nightLightOn: nightlightService ? nightlightService.enabled === true : false
   readonly property bool dndOn: notificationService ? notificationService.doNotDisturb === true : false
@@ -75,7 +114,7 @@ BarWidget {
     return out
   }
 
-  readonly property bool hasHostedPanelTiles: root.hasPanelTile()
+  readonly property bool hasHostedTiles: root.hasHostedTile()
 
   implicitWidth: mark.implicitWidth
   implicitHeight: mark.implicitHeight
@@ -85,6 +124,7 @@ BarWidget {
   function open() {
     drawerOpen = true
     refreshDynamic()
+    refreshExtensions()
   }
 
   function close() {
@@ -109,6 +149,7 @@ BarWidget {
 
   onViewChanged: {
     if (!drawerOpen) return
+    if (view === "settings") refreshExtensions()
     if (view === "custom") Qt.callLater(function() { customLabel.forceActiveFocus() })
     else Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -118,6 +159,7 @@ BarWidget {
     refreshDynamic()
     if (!touchpadProbe.running) touchpadProbe.running = true
     Qt.callLater(root.applyPanelHosting)
+    Qt.callLater(root.refreshExtensions)
   }
 
   function reloadItems() {
@@ -149,6 +191,7 @@ BarWidget {
   }
 
   function tileAvailable(id) {
+    if (typeof id === "string" && id.indexOf("ext:") === 0) return extensionMeta(id) !== null
     if (id === "touchpad") return hasTouchpad
     if (id === "power") return hasBattery
     return true
@@ -172,18 +215,27 @@ BarWidget {
 
   function tileIcon(item) {
     if (typeof item === "object" && item) return item.icon ? String(item.icon) : "󰐊"
+    if (typeof item === "string" && item.indexOf("ext:") === 0) {
+      var meta = extensionMeta(item)
+      return meta ? meta.icon : "\uf1e6"
+    }
     var entry = catalogEntry(item)
     return entry ? entry.icon : "󰐊"
   }
 
   function tileLabel(item) {
     if (typeof item === "object" && item) return item.label ? String(item.label) : "Custom"
+    if (typeof item === "string" && item.indexOf("ext:") === 0) {
+      var meta = extensionMeta(item)
+      return meta ? meta.label : String(item)
+    }
     var entry = catalogEntry(item)
     return entry ? entry.label : String(item)
   }
 
   function tileKind(item) {
     if (typeof item === "object") return "command"
+    if (typeof item === "string" && item.indexOf("ext:") === 0) return "action"
     var entry = catalogEntry(item)
     return entry ? entry.kind : "toggle"
   }
@@ -207,6 +259,10 @@ BarWidget {
 
   function tileStatus(item) {
     if (typeof item === "object") return "Run"
+    if (typeof item === "string" && item.indexOf("ext:") === 0) {
+      var meta = extensionMeta(item)
+      return meta && meta.mode === "panel" ? "Open" : "Run"
+    }
     var entry = catalogEntry(item)
     if (entry && entry.kind === "action") {
       if (item === "reminders") return reminderCount > 0 ? (reminderCount + " due") : "Add"
@@ -219,6 +275,10 @@ BarWidget {
   function runTile(item) {
     if (typeof item === "object") {
       runCustom(item)
+      return
+    }
+    if (typeof item === "string" && item.indexOf("ext:") === 0) {
+      runExtension(item)
       return
     }
     switch (item) {
@@ -375,11 +435,15 @@ BarWidget {
     }
   }
 
-  function hasPanelTile() {
+  function hasHostedTile() {
     for (var i = 0; i < currentItems.length; i++) {
       var id = currentItems[i]
-      if (typeof id === "string" && panelWidgetFor(id) !== "" && tileAvailable(id))
-        return true
+      if (typeof id !== "string") continue
+      if (id.indexOf("ext:") === 0) {
+        if (extensionMeta(id) !== null) return true
+        continue
+      }
+      if (panelWidgetFor(id) !== "" && tileAvailable(id)) return true
     }
     return false
   }
@@ -426,6 +490,127 @@ BarWidget {
     return null
   }
 
+  // General form of the same lookup: find the ModuleSlot and the widget it
+  // instantiated for an arbitrary moduleName. This also works for third-party
+  // bar widgets whose entry point is not a Panel.
+  function findSlotItemIn(node, moduleName, depth) {
+    if (!node || depth > 40) return null
+    if (node.activeItem && String(node.activeItem.moduleName || "") === moduleName)
+      return { slot: node, item: node.activeItem }
+    var kids = node.data || node.children || []
+    for (var i = 0; i < kids.length; i++) {
+      var found = findSlotItemIn(kids[i], moduleName, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+
+  function findSlotItem(moduleName) {
+    var win = root.QsWindow ? root.QsWindow.window : null
+    if (!win || !win.contentItem) return null
+    return findSlotItemIn(win.contentItem, String(moduleName || ""), 0)
+  }
+
+  // The first real button a widget exposes. Panel widgets keep their bar
+  // button alive inside the slot; simple widgets usually have one directly.
+  function findWidgetButtonIn(node, depth) {
+    if (!node || depth > 20) return null
+    if (typeof node.triggerPress === "function" && node.pressable !== false) return node
+    var kids = node.data || node.children || []
+    for (var i = 0; i < kids.length; i++) {
+      var found = findWidgetButtonIn(kids[i], depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+
+  function findWidgetButton(item) {
+    return findWidgetButtonIn(item, 0)
+  }
+
+  function extensionWidgetFor(tileId) {
+    var id = String(tileId || "")
+    return id.indexOf("ext:") === 0 ? id.substring(4) : ""
+  }
+
+  function extensionMeta(tileId) {
+    for (var i = 0; i < extensionTiles.length; i++) {
+      if (extensionTiles[i].id === tileId) return extensionTiles[i]
+    }
+    return null
+  }
+
+  function extensionIcon(plugin, button) {
+    var id = String(plugin && plugin.id || "")
+    if (firstPartyIcons[id] !== undefined) return firstPartyIcons[id]
+    if (thirdPartyIcons[id] !== undefined) return thirdPartyIcons[id]
+    var text = button && button.text !== undefined ? String(button.text) : ""
+    // A real Nerd Font glyph is usually one or two UTF-16 units. Longer text
+    // (a clock, a CPU readout) is a label, not an icon.
+    if (text.length > 0 && text.length <= 2) return text
+    return "\uf1e6"
+  }
+
+  function updateExtensionPlugins(raw) {
+    try {
+      var parsed = JSON.parse(String(raw || "").trim())
+      extensionPlugins = Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      extensionPlugins = []
+    }
+    buildExtensionTiles()
+  }
+
+  function buildExtensionTiles() {
+    var out = []
+    for (var i = 0; i < extensionPlugins.length; i++) {
+      var plugin = extensionPlugins[i]
+      if (!plugin || plugin.enabled !== true) continue
+      if (!Array.isArray(plugin.kinds) || plugin.kinds.indexOf("bar-widget") === -1) continue
+      var pluginId = String(plugin.id || "")
+      if (pluginId === "" || extensionBlocklist.indexOf(pluginId) !== -1) continue
+
+      var found = findSlotItem(pluginId)
+      if (!found) continue
+      var panel = findKeyboardPanel(found.item)
+      var button = findWidgetButton(found.item)
+      if (!panel && !button) continue
+
+      out.push({
+        id: "ext:" + pluginId,
+        widgetId: pluginId,
+        label: String(plugin.name || pluginId),
+        icon: extensionIcon(plugin, button),
+        mode: panel ? "panel" : "button",
+        firstParty: plugin.firstParty === true
+      })
+    }
+    extensionTiles = out
+    Qt.callLater(root.applyPanelHosting)
+  }
+
+  function refreshExtensions() {
+    if (!extensionList.running) extensionList.running = true
+  }
+
+  function runExtension(tileId) {
+    var widgetId = extensionWidgetFor(tileId)
+    if (widgetId === "") return
+    var found = findSlotItem(widgetId)
+    if (!found) return
+    var panel = findKeyboardPanel(found.item)
+    if (panel) {
+      runAction("omarchy-shell shell toggle " + widgetId)
+      return
+    }
+    var button = findWidgetButton(found.item)
+    if (!button) return
+    close()
+    Qt.callLater(function() {
+      button.triggerPress(Qt.LeftButton)
+    })
+  }
+
   function findKeyboardPanel(item) {
     if (!item) return null
     // KeyboardPanel has an `open` boolean property; its owner (the bar-widget
@@ -456,6 +641,21 @@ BarWidget {
       for (var i = 0; i < currentItems.length; i++) {
         var tileId = currentItems[i]
         if (typeof tileId !== "string") continue
+
+        var extId = extensionWidgetFor(tileId)
+        if (extId !== "") {
+          // Do not hide an extension before its metadata exists: that would
+          // leave a hidden bar icon with no visible way to open it.
+          if (!extensionMeta(tileId)) continue
+          var found = findSlotItem(extId)
+          if (!found) continue
+          var extPanel = findKeyboardPanel(found.item)
+          var extButton = findWidgetButton(found.item)
+          if (!extPanel && !extButton) continue
+          desired.push({ slot: found.slot, panel: extPanel, button: extButton })
+          continue
+        }
+
         var widgetId = panelWidgetFor(tileId)
         if (widgetId === "") continue
         if (!tileAvailable(tileId)) continue
@@ -467,7 +667,7 @@ BarWidget {
         // No KeyboardPanel means this is not a panel widget we can anchor.
         // Leave the bar icon visible and try again on the next tick.
         if (!panel) continue
-        desired.push({ slot: slot, panel: panel })
+        desired.push({ slot: slot, panel: panel, button: null })
       }
 
       for (var r = panelHostRecords.length - 1; r >= 0; r--) {
@@ -486,18 +686,36 @@ BarWidget {
         var want = desired[k]
         var current = panelRecordForSlot(want.slot)
         if (!current) {
-          current = { slot: want.slot, panel: want.panel, originalAnchor: want.panel.anchorItem }
+          current = {
+            slot: want.slot,
+            panel: want.panel,
+            button: want.button || null,
+            originalAnchor: want.panel ? want.panel.anchorItem : null,
+            originalCenterOnBar: want.panel ? want.panel.centerOnBar : undefined
+          }
           panelHostRecords.push(current)
         } else if (current.panel !== want.panel) {
           try {
             if (current.panel && current.originalAnchor) current.panel.anchorItem = current.originalAnchor
           } catch (error) {
           }
+          try {
+            if (current.panel && current.originalCenterOnBar !== undefined)
+              current.panel.centerOnBar = current.originalCenterOnBar
+          } catch (error) {
+          }
           current.panel = want.panel
-          current.originalAnchor = want.panel.anchorItem
+          current.button = want.button || null
+          current.originalAnchor = want.panel ? want.panel.anchorItem : null
+          current.originalCenterOnBar = want.panel ? want.panel.centerOnBar : undefined
+        } else {
+          current.button = want.button || null
         }
         try { want.slot.visible = false } catch (error) { }
-        try { want.panel.anchorItem = mark } catch (error) { }
+        if (want.panel) {
+          try { want.panel.centerOnBar = false } catch (error) { }
+          try { want.panel.anchorItem = mark } catch (error) { }
+        }
       }
     } catch (error) {
       // The bar may be tearing down; the next timer tick will retry.
@@ -513,6 +731,11 @@ BarWidget {
     try { if (record.slot) record.slot.visible = true } catch (error) { }
     try {
       if (record.panel && record.originalAnchor) record.panel.anchorItem = record.originalAnchor
+    } catch (error) {
+    }
+    try {
+      if (record.panel && record.originalCenterOnBar !== undefined)
+        record.panel.centerOnBar = record.originalCenterOnBar
     } catch (error) {
     }
   }
@@ -555,8 +778,38 @@ BarWidget {
     return JSON.stringify(out)
   }
 
+  function extensionStatus() {
+    var out = { count: extensionTiles.length, tiles: [], records: [] }
+    for (var i = 0; i < extensionTiles.length; i++) {
+      var meta = extensionTiles[i]
+      out.tiles.push({
+        id: meta.id,
+        widgetId: meta.widgetId,
+        label: meta.label,
+        mode: meta.mode,
+        firstParty: meta.firstParty === true
+      })
+    }
+    for (var r = 0; r < panelHostRecords.length; r++) {
+      var record = panelHostRecords[r]
+      var anchored = false
+      try { anchored = !!record.panel && record.panel.anchorItem === mark } catch (error) { }
+      out.records.push({
+        visible: record.slot ? record.slot.visible === true : null,
+        panel: !!record.panel,
+        anchored: anchored
+      })
+    }
+    return JSON.stringify(out)
+  }
+
   function openPanel(tileId) {
-    var widgetId = panelWidgetFor(String(tileId || ""))
+    var id = String(tileId || "")
+    if (id.indexOf("ext:") === 0) {
+      runExtension(id)
+      return
+    }
+    var widgetId = panelWidgetFor(id)
     if (widgetId !== "") runAction("omarchy-shell shell toggle " + widgetId)
   }
 
@@ -648,6 +901,8 @@ BarWidget {
     }
     function openPanel(id: string): void { root.openPanel(String(id)) }
     function panelHostingStatus(): string { return root.panelHostingStatus() }
+    function extensionStatus(): string { return root.extensionStatus() }
+    function refreshExtensions(): void { root.refreshExtensions() }
     function openCoffee(): void { root.openCoffee() }
   }
 
@@ -713,6 +968,21 @@ BarWidget {
     }
   }
 
+  Process {
+    id: extensionList
+    command: ["omarchy", "plugin", "list", "--json"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateExtensionPlugins(text)
+    }
+    onExited: function(code) {
+      if (code !== 0) {
+        root.extensionPlugins = []
+        root.extensionTiles = []
+      }
+    }
+  }
+
   // Settings are injected after construction and the var-property binding
   // proved unreliable on first load. Poll the tiny entry once a second and
   // keep the panel-host state convergent at the same time.
@@ -724,7 +994,7 @@ BarWidget {
       try {
         root.reloadItems()
         root.refreshPanelCapabilities()
-        if (root.hasHostedPanelTiles || root.panelHostRecords.length > 0)
+        if (root.hasHostedTiles || root.panelHostRecords.length > 0)
           root.applyPanelHosting()
       } catch (error) {
       }
@@ -903,6 +1173,46 @@ BarWidget {
                 title: modelData.label
                 description: modelData.description
                 available: root.tileAvailable(modelData.id)
+                checked: root.isTileEnabled(modelData.id)
+                onToggled: root.setTileEnabled(modelData.id, !root.isTileEnabled(modelData.id))
+              }
+            }
+
+            Item { width: 1; height: Style.space(8) }
+
+            Text {
+              visible: root.extensionTiles.length > 0
+              width: parent.width
+              text: "Extensions"
+              color: root.mutedColor
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.caption
+              font.bold: true
+            }
+
+            Text {
+              visible: root.extensionTiles.length > 0
+              width: parent.width
+              text: "Installed bar widgets. Adding one hides its bar icon."
+              wrapMode: Text.WordWrap
+              color: root.mutedColor
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.caption
+            }
+
+            Repeater {
+              model: root.extensionTiles
+
+              delegate: CatalogRow {
+                required property var modelData
+                width: settingsContent.width
+                bar: root.bar
+                icon: modelData.icon
+                title: modelData.label
+                description: modelData.mode === "panel"
+                  ? "Open its panel from the drawer"
+                  : "Run its primary bar action"
+                available: true
                 checked: root.isTileEnabled(modelData.id)
                 onToggled: root.setTileEnabled(modelData.id, !root.isTileEnabled(modelData.id))
               }

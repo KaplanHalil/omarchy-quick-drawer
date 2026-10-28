@@ -8,7 +8,7 @@ A quick-toggle drawer for the [Omarchy](https://omarchy.org) bar.
 
 Quick Drawer puts the things you reach for all day — caffeine, night light,
 do-not-disturb, screensaver and suspend — behind one bar mark. Add panel
-shortcuts and your own command tiles from the built-in catalogue.
+shortcuts, installed extensions and your own command tiles from the catalogue.
 
 > This is a clone of Omarchy's `omarchy.indicators` widget. The clone keeps
 > the source-specific first-party service access, so the service-backed
@@ -23,6 +23,8 @@ shortcuts and your own command tiles from the built-in catalogue.
 - Panel shortcuts for **Audio**, **Network**, **Power** and **Monitor**.
   Enabling one hides its bar icon and opens the panel from the drawer.
 - **Reminders** opens the reminder flow.
+- **Extensions** catalogue: installed first-party and third-party bar widgets
+  can move into the drawer, hiding their bar icons.
 - **Add tiles** view with a catalogue and switches.
 - **Custom command tiles**: label, Nerd Font glyph and a `bash -lc` command.
 - Selections persist in `shell.json` and survive shell restarts.
@@ -86,6 +88,39 @@ and the rest keep working exactly as before.
 - If the panel widget is missing from the bar, the tile falls back to normal
   behaviour instead of hiding an icon it cannot open.
 
+### Extensions move into the drawer
+
+The **Extensions** section of Add tiles lists installed bar widgets that are
+currently live in the bar, both first-party and third-party. Adding one hides
+its bar icon and puts a tile in Quick Drawer.
+
+Two modes are used:
+
+- **Panel mode** — the extension has a panel. The panel opens below the Quick
+  Drawer mark, with the extension's own services and data intact. Examples:
+  Gazette, Omapop, Clock, Weather, Agents, Notification Center, TopStats.
+- **Action mode** — the extension has no anchorable panel. Clicking the tile
+  triggers the extension's primary bar button. Examples: OmaSettings,
+  Keyboard layout, System update, Omarchy menu.
+
+The extension list is refreshed whenever the drawer or Add tiles opens. Only
+widgets that are currently in the bar can be listed; an installed but unplaced
+plugin has no live widget to move.
+
+Not every widget is a good single tile. The following are excluded:
+
+- Advanced Workspaces and Pocket
+- the system tray and spacer
+- the core Audio, Network, Power and Monitor widgets, which already have
+  dedicated tiles
+
+Extensions are not re-instantiated inside the card. Panel mode reuses the real
+panel; action mode triggers the real bar button. This is what keeps services
+and state working, at the cost of not showing a live mini-widget inside the
+card.
+
+Removing an extension tile restores its bar icon in the original slot.
+
 ## IPC
 
 The IPC target stays `omarchy.indicators` so the clone routing keeps working.
@@ -104,6 +139,10 @@ omarchy-shell omarchy.indicators toggleSuspend
 omarchy-shell omarchy.indicators addTile audio
 omarchy-shell omarchy.indicators removeTile audio
 omarchy-shell omarchy.indicators openPanel audio
+omarchy-shell omarchy.indicators addTile ext:io.github.kaplanhalil.gazette
+omarchy-shell omarchy.indicators removeTile ext:io.github.kaplanhalil.gazette
+omarchy-shell omarchy.indicators openPanel ext:io.github.kaplanhalil.gazette
+omarchy-shell omarchy.indicators extensionStatus
 ```
 
 ## Custom commands
@@ -123,7 +162,7 @@ omarchy plugin remove io.github.kaplanhalil.quickdrawer
 ```
 
 This restores the stock `omarchy.indicators` widget in the same slot and
-unhides any bar icons that panel tiles had moved into the drawer.
+unhides any bar icons that panel or extension tiles had moved into the drawer.
 
 ## Support
 
