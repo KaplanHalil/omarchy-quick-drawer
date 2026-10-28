@@ -94,6 +94,7 @@ Item {
 
     anchors.fill: parent
     enabled: root.interactive
+    hoverEnabled: true
     preventStealing: root.reorderable
     cursorShape: dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
 
