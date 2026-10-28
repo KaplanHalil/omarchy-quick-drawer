@@ -114,6 +114,7 @@ Item {
       var dy = mouse.y - pressPoint.y
       if (!dragging && Math.abs(dx) + Math.abs(dy) >= Style.space(8)) {
         dragging = true
+        suppressClick = true
         root.dragStarted(root, mouse.x, mouse.y)
       }
       if (dragging) root.dragMoved(root, mouse.x, mouse.y)
@@ -124,9 +125,11 @@ Item {
         dragging = false
         suppressClick = true
         root.dragFinished(root, mouse.x, mouse.y)
-        return
       }
-      if (!suppressClick && containsMouse) root.clicked()
+    }
+
+    onClicked: function(mouse) {
+      if (!suppressClick) root.clicked()
     }
 
     onCanceled: {
