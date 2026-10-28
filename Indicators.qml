@@ -249,6 +249,7 @@ BarWidget {
     root.settings = entry
     if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
       root.bar.shell.updateEntryInline(root.moduleName, entry)
+    root.reloadItems()
     Qt.callLater(root.applyPanelHosting)
   }
 
