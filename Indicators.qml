@@ -450,52 +450,56 @@ BarWidget {
   }
 
   function applyPanelHosting() {
-    var desired = []
-    for (var i = 0; i < currentItems.length; i++) {
-      var tileId = currentItems[i]
-      if (typeof tileId !== "string") continue
-      var widgetId = panelWidgetFor(tileId)
-      if (widgetId === "") continue
-      if (!tileAvailable(tileId)) continue
-      var panelRoot = findPanelFor(widgetId)
-      if (!panelRoot) continue
-      var slot = findSlotForPanel(panelRoot)
-      if (!slot) continue
-      var panel = findKeyboardPanel(panelRoot)
-      // No KeyboardPanel means this is not a panel widget we can anchor.
-      // Leave the bar icon visible and try again on the next tick.
-      if (!panel) continue
-      desired.push({ slot: slot, panel: panel })
-    }
-
-    for (var r = panelHostRecords.length - 1; r >= 0; r--) {
-      var record = panelHostRecords[r]
-      var keep = false
-      for (var d = 0; d < desired.length; d++) {
-        if (desired[d].slot === record.slot) { keep = true; break }
+    try {
+      var desired = []
+      for (var i = 0; i < currentItems.length; i++) {
+        var tileId = currentItems[i]
+        if (typeof tileId !== "string") continue
+        var widgetId = panelWidgetFor(tileId)
+        if (widgetId === "") continue
+        if (!tileAvailable(tileId)) continue
+        var panelRoot = findPanelFor(widgetId)
+        if (!panelRoot) continue
+        var slot = findSlotForPanel(panelRoot)
+        if (!slot) continue
+        var panel = findKeyboardPanel(panelRoot)
+        // No KeyboardPanel means this is not a panel widget we can anchor.
+        // Leave the bar icon visible and try again on the next tick.
+        if (!panel) continue
+        desired.push({ slot: slot, panel: panel })
       }
-      if (!keep) {
-        restorePanelRecord(record)
-        panelHostRecords.splice(r, 1)
-      }
-    }
 
-    for (var k = 0; k < desired.length; k++) {
-      var want = desired[k]
-      var current = panelRecordForSlot(want.slot)
-      if (!current) {
-        current = { slot: want.slot, panel: want.panel, originalAnchor: want.panel.anchorItem }
-        panelHostRecords.push(current)
-      } else if (current.panel !== want.panel) {
-        try {
-          if (current.panel && current.originalAnchor) current.panel.anchorItem = current.originalAnchor
-        } catch (error) {
+      for (var r = panelHostRecords.length - 1; r >= 0; r--) {
+        var record = panelHostRecords[r]
+        var keep = false
+        for (var d = 0; d < desired.length; d++) {
+          if (desired[d].slot === record.slot) { keep = true; break }
         }
-        current.panel = want.panel
-        current.originalAnchor = want.panel.anchorItem
+        if (!keep) {
+          restorePanelRecord(record)
+          panelHostRecords.splice(r, 1)
+        }
       }
-      try { want.slot.visible = false } catch (error) { }
-      try { want.panel.anchorItem = mark } catch (error) { }
+
+      for (var k = 0; k < desired.length; k++) {
+        var want = desired[k]
+        var current = panelRecordForSlot(want.slot)
+        if (!current) {
+          current = { slot: want.slot, panel: want.panel, originalAnchor: want.panel.anchorItem }
+          panelHostRecords.push(current)
+        } else if (current.panel !== want.panel) {
+          try {
+            if (current.panel && current.originalAnchor) current.panel.anchorItem = current.originalAnchor
+          } catch (error) {
+          }
+          current.panel = want.panel
+          current.originalAnchor = want.panel.anchorItem
+        }
+        try { want.slot.visible = false } catch (error) { }
+        try { want.panel.anchorItem = mark } catch (error) { }
+      }
+    } catch (error) {
+      // The bar may be tearing down; the next timer tick will retry.
     }
   }
 
@@ -716,10 +720,13 @@ BarWidget {
     repeat: true
     running: true
     onTriggered: {
-      root.reloadItems()
-      root.refreshPanelCapabilities()
-      if (root.hasHostedPanelTiles || root.panelHostRecords.length > 0)
-        root.applyPanelHosting()
+      try {
+        root.reloadItems()
+        root.refreshPanelCapabilities()
+        if (root.hasHostedPanelTiles || root.panelHostRecords.length > 0)
+          root.applyPanelHosting()
+      } catch (error) {
+      }
     }
   }
 
