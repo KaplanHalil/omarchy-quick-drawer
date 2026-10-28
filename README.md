@@ -21,6 +21,7 @@ shortcuts and your own command tiles from the built-in catalogue.
 - Service-backed **Caffeine**, **Night Light** and **DND** toggles.
 - **Screensaver**, **Suspend** and **Touchpad** flag toggles.
 - Panel shortcuts for **Audio**, **Network**, **Power** and **Monitor**.
+  Enabling one hides its bar icon and opens the panel from the drawer.
 - **Reminders** opens the reminder flow.
 - **Add tiles** view with a catalogue and switches.
 - **Custom command tiles**: label, Nerd Font glyph and a `bash -lc` command.
@@ -68,7 +69,22 @@ omarchy bar move io.github.kaplanhalil.quickdrawer --section center
 ### Catalogue
 
 Audio, Network, Power, Monitor, Reminders, Touchpad, and the five default
-tiles. Panel tiles close the drawer and open the matching Omarchy panel.
+tiles.
+
+### Panels move into the drawer
+
+When you enable **Audio**, **Network**, **Power** or **Monitor**, Quick Drawer
+hides that widget's bar icon and opens the panel from the Quick Drawer mark
+instead. The first-party panel is kept alive, so PipeWire, Wi-Fi, brightness
+and the rest keep working exactly as before.
+
+- The panel opens below the Quick Drawer mark.
+- Removing the tile restores the bar icon in its original slot.
+- The bar icon is hidden at runtime, not removed from `shell.json`.
+- Power is hidden automatically on machines without a battery.
+- Touchpad is hidden automatically on machines without a touchpad.
+- If the panel widget is missing from the bar, the tile falls back to normal
+  behaviour instead of hiding an icon it cannot open.
 
 ## IPC
 
@@ -87,6 +103,7 @@ omarchy-shell omarchy.indicators toggleScreensaver
 omarchy-shell omarchy.indicators toggleSuspend
 omarchy-shell omarchy.indicators addTile audio
 omarchy-shell omarchy.indicators removeTile audio
+omarchy-shell omarchy.indicators openPanel audio
 ```
 
 ## Custom commands
@@ -105,7 +122,8 @@ Only add commands you trust. The drawer shows the same warning in the form.
 omarchy plugin remove io.github.kaplanhalil.quickdrawer
 ```
 
-This restores the stock `omarchy.indicators` widget in the same slot.
+This restores the stock `omarchy.indicators` widget in the same slot and
+unhides any bar icons that panel tiles had moved into the drawer.
 
 ## Support
 

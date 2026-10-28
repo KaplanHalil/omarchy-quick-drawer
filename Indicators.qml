@@ -30,11 +30,18 @@ BarWidget {
   property bool suspendEnabled: true
   property bool hasTouchpad: false
   property bool touchpadEnabled: true
+  property bool hasBattery: true
   property int reminderCount: 0
   property string editingCustomId: ""
+  // Runtime records for bar widgets whose icon is hidden while their panel is
+  // available from the drawer. See applyPanelHosting().
+  property var panelHostRecords: []
 
   readonly property var defaultItems: ["caffeine", "nightlight", "dnd", "screensaver", "suspend"]
-  readonly property var currentItems: Array.isArray(settings.items) ? settings.items : defaultItems
+  // Settings are injected after the widget is created. A plain var binding on
+  // settings.items did not re-evaluate when the bar handed the real entry in,
+  // so keep the displayed list explicitly in sync.
+  property var currentItems: []
   readonly property var catalog: [
     { id: "caffeine", label: "Caffeine", icon: "󰅶", description: "Keep the screen awake", kind: "toggle" },
     { id: "nightlight", label: "Night Light", icon: "󰔎", description: "Blue-light filter", kind: "toggle" },
@@ -42,10 +49,10 @@ BarWidget {
     { id: "screensaver", label: "Screensaver", icon: "󱄄", description: "Enable or disable the screensaver", kind: "toggle" },
     { id: "suspend", label: "Suspend", icon: "󰒲", description: "Enable or disable suspend", kind: "toggle" },
     { id: "touchpad", label: "Touchpad", icon: "󰟸", description: "Enable or disable the touchpad", kind: "toggle" },
-    { id: "audio", label: "Audio", icon: "󰕾", description: "Open the audio panel", kind: "action" },
-    { id: "network", label: "Network", icon: "󰖩", description: "Open the network panel", kind: "action" },
-    { id: "power", label: "Power", icon: "󰐥", description: "Open the power panel", kind: "action" },
-    { id: "monitor", label: "Monitor", icon: "󰍹", description: "Open the display panel", kind: "action" },
+    { id: "audio", label: "Audio", icon: "󰕾", description: "Open the audio panel and hide its bar icon", kind: "action" },
+    { id: "network", label: "Network", icon: "󰖩", description: "Open the network panel and hide its bar icon", kind: "action" },
+    { id: "power", label: "Power", icon: "󰐥", description: "Open the power panel and hide its bar icon", kind: "action" },
+    { id: "monitor", label: "Monitor", icon: "󰍹", description: "Open the display panel and hide its bar icon", kind: "action" },
     { id: "reminders", label: "Reminders", icon: "󰢌", description: "Open your reminders", kind: "action" }
   ]
 
@@ -62,11 +69,13 @@ BarWidget {
     var out = []
     for (var i = 0; i < currentItems.length; i++) {
       var item = currentItems[i]
-      if (item === "touchpad" && !hasTouchpad) continue
+      if (!tileAvailable(item)) continue
       out.push(item)
     }
     return out
   }
+
+  readonly property bool hasHostedPanelTiles: root.hasPanelTile()
 
   implicitWidth: mark.implicitWidth
   implicitHeight: mark.implicitHeight
@@ -87,11 +96,16 @@ BarWidget {
   onDrawerOpenChanged: {
     if (drawerOpen) {
       refreshDynamic()
+      Qt.callLater(root.applyPanelHosting)
     } else {
       view = "grid"
       clearCustomForm()
     }
   }
+
+  onSettingsChanged: root.reloadItems()
+  onCurrentItemsChanged: Qt.callLater(root.applyPanelHosting)
+  onBarChanged: Qt.callLater(root.applyPanelHosting)
 
   onViewChanged: {
     if (!drawerOpen) return
@@ -100,9 +114,30 @@ BarWidget {
   }
 
   Component.onCompleted: {
+    reloadItems()
     refreshDynamic()
     if (!touchpadProbe.running) touchpadProbe.running = true
+    Qt.callLater(root.applyPanelHosting)
   }
+
+  function reloadItems() {
+    // A JSON array crossing the bar's QML property boundary can arrive as a
+    // QVariantList, for which Array.isArray() is false. It still has length
+    // and indexed access, which is all the rest of this file needs.
+    var raw = settings ? settings.items : undefined
+    var next = defaultItems
+    if (raw !== undefined && raw !== null && typeof raw !== "string"
+        && typeof raw.length === "number")
+      next = raw
+    try {
+      if (JSON.stringify(currentItems) === JSON.stringify(next)) return
+    } catch (error) {
+    }
+    if (currentItems === next) return
+    currentItems = next
+  }
+
+  Component.onDestruction: root.restoreAllPanelHosting()
 
   // ---------------------------------------------------------------- catalog
 
@@ -111,6 +146,12 @@ BarWidget {
       if (typeof currentItems[i] === "string" && currentItems[i] === id) return true
     }
     return false
+  }
+
+  function tileAvailable(id) {
+    if (id === "touchpad") return hasTouchpad
+    if (id === "power") return hasBattery
+    return true
   }
 
   function catalogEntry(id) {
@@ -208,6 +249,7 @@ BarWidget {
     root.settings = entry
     if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
       root.bar.shell.updateEntryInline(root.moduleName, entry)
+    Qt.callLater(root.applyPanelHosting)
   }
 
   function setTileEnabled(id, enabled) {
@@ -313,6 +355,206 @@ BarWidget {
     })
   }
 
+  // ------------------------------------------------------- panel hosting
+  //
+  // A bar-widget panel (audio, network, power, monitor) is only summonable
+  // while its widget is alive in the bar. Third-party bar widgets cannot
+  // rewrite the bar layout, so we keep the widget mounted, hide its slot
+  // visually, and move its KeyboardPanel anchor to this widget's bar mark.
+  // The real first-party panel then opens from the drawer with all of its
+  // services intact.
+
+  function panelWidgetFor(tileId) {
+    switch (String(tileId || "")) {
+      case "audio": return "omarchy.audio"
+      case "network": return "omarchy.network"
+      case "power": return "omarchy.power"
+      case "monitor": return "omarchy.monitor"
+      default: return ""
+    }
+  }
+
+  function hasPanelTile() {
+    for (var i = 0; i < currentItems.length; i++) {
+      var id = currentItems[i]
+      if (typeof id === "string" && panelWidgetFor(id) !== "" && tileAvailable(id))
+        return true
+    }
+    return false
+  }
+
+  function refreshPanelCapabilities() {
+    var power = findPanelFor("omarchy.power")
+    hasBattery = power ? power.batteryPresent === true : true
+  }
+
+  // Find a live bar-widget panel by its moduleName in this bar surface's item
+  // tree. The bar root itself is not an Item ancestor of its widgets (each
+  // screen is a PanelWindow), so we look for the panel object directly.
+  function findPanelItem(node, moduleName, depth) {
+    if (!node || depth > 40) return null
+    if (String(node.moduleName || "") === moduleName
+        && typeof node.open === "function" && typeof node.close === "function"
+        && node.opened !== undefined)
+      return node
+    // `data` also contains non-Item QObjects such as panels; `children`
+    // only walks visual Items.
+    var kids = node.data || node.children || []
+    for (var i = 0; i < kids.length; i++) {
+      var found = findPanelItem(kids[i], moduleName, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+
+  function findPanelFor(moduleName) {
+    var win = root.QsWindow ? root.QsWindow.window : null
+    if (!win || !win.contentItem) return null
+    return findPanelItem(win.contentItem, moduleName, 0)
+  }
+
+  // ModuleSlot has activeItem === the panel it instantiated. It is the object
+  // the bar uses to reserve the icon's width, so hiding it hides the icon
+  // while leaving the panel and its services alive.
+  function findSlotForPanel(panel) {
+    var node = panel ? panel.parent : null
+    while (node) {
+      if (node.activeItem === panel) return node
+      node = node.parent
+    }
+    return null
+  }
+
+  function findKeyboardPanel(item) {
+    if (!item) return null
+    // KeyboardPanel has an `open` boolean property; its owner (the bar-widget
+    // panel root) has open()/close() functions instead.
+    if (item.anchorItem !== undefined && item.contentWidth !== undefined
+        && item.open !== undefined && typeof item.close === "function")
+      return item
+    // KeyboardPanel is a PanelWindow (a QObject, not an Item), so it lives in
+    // `data`, not `children`.
+    var kids = item.data || item.children || []
+    for (var i = 0; i < kids.length; i++) {
+      var found = findKeyboardPanel(kids[i])
+      if (found) return found
+    }
+    return null
+  }
+
+  function panelRecordForSlot(slot) {
+    for (var i = 0; i < panelHostRecords.length; i++) {
+      if (panelHostRecords[i].slot === slot) return panelHostRecords[i]
+    }
+    return null
+  }
+
+  function applyPanelHosting() {
+    var desired = []
+    for (var i = 0; i < currentItems.length; i++) {
+      var tileId = currentItems[i]
+      if (typeof tileId !== "string") continue
+      var widgetId = panelWidgetFor(tileId)
+      if (widgetId === "") continue
+      if (!tileAvailable(tileId)) continue
+      var panelRoot = findPanelFor(widgetId)
+      if (!panelRoot) continue
+      var slot = findSlotForPanel(panelRoot)
+      if (!slot) continue
+      var panel = findKeyboardPanel(panelRoot)
+      // No KeyboardPanel means this is not a panel widget we can anchor.
+      // Leave the bar icon visible and try again on the next tick.
+      if (!panel) continue
+      desired.push({ slot: slot, panel: panel })
+    }
+
+    for (var r = panelHostRecords.length - 1; r >= 0; r--) {
+      var record = panelHostRecords[r]
+      var keep = false
+      for (var d = 0; d < desired.length; d++) {
+        if (desired[d].slot === record.slot) { keep = true; break }
+      }
+      if (!keep) {
+        restorePanelRecord(record)
+        panelHostRecords.splice(r, 1)
+      }
+    }
+
+    for (var k = 0; k < desired.length; k++) {
+      var want = desired[k]
+      var current = panelRecordForSlot(want.slot)
+      if (!current) {
+        current = { slot: want.slot, panel: want.panel, originalAnchor: want.panel.anchorItem }
+        panelHostRecords.push(current)
+      } else if (current.panel !== want.panel) {
+        try {
+          if (current.panel && current.originalAnchor) current.panel.anchorItem = current.originalAnchor
+        } catch (error) {
+        }
+        current.panel = want.panel
+        current.originalAnchor = want.panel.anchorItem
+      }
+      try { want.slot.visible = false } catch (error) { }
+      try { want.panel.anchorItem = mark } catch (error) { }
+    }
+  }
+
+  function restorePanelRecord(record) {
+    if (!record) return
+    try {
+      if (record.panel && typeof record.panel.close === "function") record.panel.close()
+    } catch (error) {
+    }
+    try { if (record.slot) record.slot.visible = true } catch (error) { }
+    try {
+      if (record.panel && record.originalAnchor) record.panel.anchorItem = record.originalAnchor
+    } catch (error) {
+    }
+  }
+
+  function restoreAllPanelHosting() {
+    var records = panelHostRecords
+    panelHostRecords = []
+    for (var i = 0; i < records.length; i++) restorePanelRecord(records[i])
+  }
+
+  function panelHostingStatus() {
+    var out = {
+      hasBattery: hasBattery,
+      hasTouchpad: hasTouchpad,
+      panels: [],
+      records: []
+    }
+    var ids = ["audio", "network", "power", "monitor"]
+    for (var i = 0; i < ids.length; i++) {
+      var widgetId = panelWidgetFor(ids[i])
+      var panelRoot = findPanelFor(widgetId)
+      var slot = findSlotForPanel(panelRoot)
+      out.panels.push({
+        tile: ids[i],
+        widget: widgetId,
+        found: !!panelRoot,
+        slotFound: !!slot,
+        visible: slot ? slot.visible === true : null
+      })
+    }
+    for (var r = 0; r < panelHostRecords.length; r++) {
+      var record = panelHostRecords[r]
+      var anchored = false
+      try { anchored = !!record.panel && record.panel.anchorItem === mark } catch (error) { }
+      out.records.push({
+        visible: record.slot ? record.slot.visible === true : null,
+        anchored: anchored
+      })
+    }
+    return JSON.stringify(out)
+  }
+
+  function openPanel(tileId) {
+    var widgetId = panelWidgetFor(String(tileId || ""))
+    if (widgetId !== "") runAction("omarchy-shell shell toggle " + widgetId)
+  }
+
   function runReminders() {
     runAction(reminderCount > 0 ? "omarchy-reminder show" : "omarchy-reminder -i")
   }
@@ -399,6 +641,8 @@ BarWidget {
       var item = root.findCustom(String(id))
       if (item) root.deleteCustom(item)
     }
+    function openPanel(id: string): void { root.openPanel(String(id)) }
+    function panelHostingStatus(): string { return root.panelHostingStatus() }
     function openCoffee(): void { root.openCoffee() }
   }
 
@@ -461,6 +705,21 @@ BarWidget {
           root.reminderCount = 0
         }
       }
+    }
+  }
+
+  // Settings are injected after construction and the var-property binding
+  // proved unreliable on first load. Poll the tiny entry once a second and
+  // keep the panel-host state convergent at the same time.
+  Timer {
+    interval: 500
+    repeat: true
+    running: true
+    onTriggered: {
+      root.reloadItems()
+      root.refreshPanelCapabilities()
+      if (root.hasHostedPanelTiles || root.panelHostRecords.length > 0)
+        root.applyPanelHosting()
     }
   }
 
@@ -632,7 +891,7 @@ BarWidget {
                 icon: modelData.icon
                 title: modelData.label
                 description: modelData.description
-                available: modelData.id !== "touchpad" || root.hasTouchpad
+                available: root.tileAvailable(modelData.id)
                 checked: root.isTileEnabled(modelData.id)
                 onToggled: root.setTileEnabled(modelData.id, !root.isTileEnabled(modelData.id))
               }
