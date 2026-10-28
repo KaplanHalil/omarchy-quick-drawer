@@ -36,6 +36,9 @@ shortcuts, installed extensions and your own command tiles from the catalogue.
 
 - Omarchy 4.x with the Quickshell shell.
 - A Nerd Font set as the bar's font (the mark and tile glyphs need it).
+- Omarchy's bundled CLI helpers (`omarchy`, `omarchy-toggle-*`,
+  `omarchy-reminder`). No extra packages, accounts, telemetry or background
+  network services are used.
 
 ## Install
 
