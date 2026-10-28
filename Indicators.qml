@@ -41,6 +41,17 @@ BarWidget {
   property var extensionPlugins: []
   property var extensionTiles: []
 
+  // Drag-to-reorder state for the grid.
+  property int dragIndex: -1
+  property int dropIndex: -1
+  property var dragItem: null
+  property real dragOffsetX: 0
+  property real dragOffsetY: 0
+  property real dragGhostX: 0
+  property real dragGhostY: 0
+  property real dragGhostWidth: Style.space(96)
+  property real dragGhostHeight: Style.space(84)
+
   readonly property var defaultItems: ["caffeine", "nightlight", "dnd", "screensaver", "suspend"]
   // Settings are injected after the widget is created. A plain var binding on
   // settings.items did not re-evaluate when the bar handed the real entry in,
@@ -138,6 +149,7 @@ BarWidget {
       refreshDynamic()
       Qt.callLater(root.applyPanelHosting)
     } else {
+      cancelTileDrag()
       view = "grid"
       clearCustomForm()
     }
@@ -149,6 +161,7 @@ BarWidget {
 
   onViewChanged: {
     if (!drawerOpen) return
+    if (view !== "grid") cancelTileDrag()
     if (view === "settings") refreshExtensions()
     if (view === "custom") Qt.callLater(function() { customLabel.forceActiveFocus() })
     else Qt.callLater(function() { keyCatcher.forceActiveFocus() })
@@ -414,6 +427,111 @@ BarWidget {
     Qt.callLater(function() {
       if (root.bar) root.bar.run(command)
     })
+  }
+
+  // ------------------------------------------------------- tile reordering
+
+  function tileKey(item) {
+    if (typeof item === "string") return item
+    if (item && typeof item === "object" && item.id !== undefined) return String(item.id)
+    return ""
+  }
+
+  function currentIndexForTileKey(key) {
+    for (var i = 0; i < currentItems.length; i++) {
+      if (tileKey(currentItems[i]) === key) return i
+    }
+    return -1
+  }
+
+  function beginTileDrag(tile, displayIndex, x, y) {
+    if (view !== "grid" || !tile) return
+    if (displayIndex < 0 || displayIndex >= displayItems.length) return
+    dragIndex = displayIndex
+    dragItem = displayItems[displayIndex]
+    dragOffsetX = x
+    dragOffsetY = y
+    dragGhostWidth = tile.width
+    dragGhostHeight = tile.height
+    var origin = tile.mapToItem(contentRoot, 0, 0)
+    dragGhostX = origin.x
+    dragGhostY = origin.y
+    dropIndex = displayIndex
+  }
+
+  function updateTileDrag(tile, x, y) {
+    if (dragIndex < 0 || !tile) return
+    var point = tile.mapToItem(contentRoot, x, y)
+    dragGhostX = point.x - dragOffsetX
+    dragGhostY = point.y - dragOffsetY
+
+    var gridPoint = tile.mapToItem(gridContent, x, y)
+    var margin = Style.space(24)
+    if (gridPoint.x < -margin || gridPoint.x > gridContent.width + margin
+        || gridPoint.y < -margin || gridPoint.y > gridContent.height + margin) {
+      dropIndex = -1
+      return
+    }
+
+    var target = -1
+    var nearest = -1
+    var nearestDistance = Infinity
+    var kids = gridContent.children
+    for (var i = 0; i < kids.length; i++) {
+      var child = kids[i]
+      if (!child || !child.visible) continue
+      if (gridPoint.x >= child.x && gridPoint.x <= child.x + child.width
+          && gridPoint.y >= child.y && gridPoint.y <= child.y + child.height) {
+        target = i
+        break
+      }
+      var dx = gridPoint.x - (child.x + child.width / 2)
+      var dy = gridPoint.y - (child.y + child.height / 2)
+      var distance = dx * dx + dy * dy
+      if (distance < nearestDistance) {
+        nearestDistance = distance
+        nearest = i
+      }
+    }
+    if (target === -1 && nearest >= 0 && Math.sqrt(nearestDistance) <= Style.space(80))
+      target = nearest
+    dropIndex = target
+  }
+
+  function finishTileDrag(tile, x, y) {
+    if (dragIndex < 0) return
+    updateTileDrag(tile, x, y)
+    var from = dragIndex
+    var to = dropIndex
+    if (to >= 0 && to !== from && to < displayItems.length) moveDisplayItem(from, to)
+    cancelTileDrag()
+  }
+
+  function cancelTileDrag() {
+    dragIndex = -1
+    dropIndex = -1
+    dragItem = null
+    dragOffsetX = 0
+    dragOffsetY = 0
+  }
+
+  function moveDisplayItem(fromDisplay, toDisplay) {
+    if (fromDisplay === toDisplay) return
+    if (fromDisplay < 0 || fromDisplay >= displayItems.length) return
+    if (toDisplay < 0 || toDisplay >= displayItems.length) return
+
+    var fromKey = tileKey(displayItems[fromDisplay])
+    var toKey = tileKey(displayItems[toDisplay])
+    if (fromKey === "" || toKey === "") return
+    var fromIndex = currentIndexForTileKey(fromKey)
+    var toIndex = currentIndexForTileKey(toKey)
+    if (fromIndex < 0 || toIndex < 0) return
+
+    var next = []
+    for (var i = 0; i < currentItems.length; i++) next.push(currentItems[i])
+    var moved = next.splice(fromIndex, 1)[0]
+    next.splice(toIndex, 0, moved)
+    persistItems(next)
   }
 
   // ------------------------------------------------------- panel hosting
@@ -1107,7 +1225,7 @@ BarWidget {
           contentWidth: width
           contentHeight: gridContent.implicitHeight
           clip: true
-          interactive: contentHeight > height
+          interactive: root.dragIndex < 0 && contentHeight > height
 
           Grid {
             id: gridContent
@@ -1120,13 +1238,21 @@ BarWidget {
 
               delegate: Tile {
                 required property var modelData
+                required property int index
                 bar: root.bar
                 icon: root.tileIcon(modelData)
                 label: root.tileLabel(modelData)
                 active: root.tileActive(modelData)
                 action: root.tileIsAction(modelData)
                 statusText: root.tileStatus(modelData)
+                reorderable: root.view === "grid" && root.displayItems.length > 1
+                dragActive: root.dragIndex === index
+                dropTarget: root.dragIndex >= 0 && root.dropIndex === index && root.dragIndex !== index
                 onClicked: root.runTile(modelData)
+                onDragStarted: function(tile, x, y) { root.beginTileDrag(tile, index, x, y) }
+                onDragMoved: function(tile, x, y) { root.updateTileDrag(tile, x, y) }
+                onDragFinished: function(tile, x, y) { root.finishTileDrag(tile, x, y) }
+                onDragCancelled: root.cancelTileDrag()
               }
             }
           }
@@ -1409,6 +1535,27 @@ BarWidget {
             onClicked: root.cancelCustom()
           }
         }
+      }
+
+      // Drag ghost lives outside the Flickable and the Grid so it can follow
+      // the pointer without being positioned by a layout.
+      Tile {
+        id: dragGhost
+        visible: root.view === "grid" && root.dragIndex >= 0
+        width: root.dragGhostWidth
+        height: root.dragGhostHeight
+        x: root.dragGhostX
+        y: root.dragGhostY
+        z: 1000
+        bar: root.bar
+        icon: root.dragItem ? root.tileIcon(root.dragItem) : ""
+        label: root.dragItem ? root.tileLabel(root.dragItem) : ""
+        active: root.dragItem ? root.tileActive(root.dragItem) : false
+        action: root.dragItem ? root.tileIsAction(root.dragItem) : false
+        statusText: root.dragItem ? root.tileStatus(root.dragItem) : ""
+        reorderable: false
+        interactive: false
+        opacity: 0.9
       }
     }
   }

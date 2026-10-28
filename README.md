@@ -26,6 +26,7 @@ shortcuts, installed extensions and your own command tiles from the catalogue.
 - **Extensions** catalogue: installed first-party and third-party bar widgets
   can move into the drawer, hiding their bar icons.
 - **Add tiles** view with a catalogue and switches.
+- **Drag to reorder** tiles; the order is saved in `shell.json`.
 - **Custom command tiles**: label, Nerd Font glyph and a `bash -lc` command.
 - Selections persist in `shell.json` and survive shell restarts.
 - Touchpad disappears when the machine has no touchpad.
@@ -55,6 +56,8 @@ omarchy bar move io.github.kaplanhalil.quickdrawer --section center
 - Click outside to close it.
 - Click the gear in the drawer header to open **Add tiles**.
 - Use the switches to add or remove tiles.
+- Drag one tile onto another to reorder the grid. The new order is written
+  back to `shell.json` and survives shell restarts.
 - **Add custom command** creates a tile with your own label, glyph and
   command. The command runs with `bash -lc` as your user.
 
