@@ -1,6 +1,6 @@
 # Quick Drawer
 
-A centered quick-toggle drawer for the [Omarchy](https://omarchy.org) bar.
+A quick-toggle drawer for the [Omarchy](https://omarchy.org) bar.
 
 ![Quick Drawer](preview.png)
 
@@ -16,8 +16,8 @@ shortcuts and your own command tiles from the built-in catalogue.
 
 ## Features
 
-- One sliders mark in the bar's center section.
-- A card that opens horizontally centered under the bar.
+- One sliders mark in any bar section.
+- A card that opens under the widget's bar slot and stays on screen.
 - Service-backed **Caffeine**, **Night Light** and **DND** toggles.
 - **Screensaver**, **Suspend** and **Touchpad** flag toggles.
 - Panel shortcuts for **Audio**, **Network**, **Power** and **Monitor**.
@@ -40,8 +40,8 @@ shortcuts and your own command tiles from the built-in catalogue.
 omarchy plugin add https://github.com/KaplanHalil/omarchy-quick-drawer.git --enable
 ```
 
-The widget replaces the stock `omarchy.indicators` entry in the center
-section. If you later want to move it:
+The widget replaces the stock `omarchy.indicators` entry where it sits in the
+bar (center by default). If you want to move it:
 
 ```bash
 omarchy bar move io.github.kaplanhalil.quickdrawer --section center

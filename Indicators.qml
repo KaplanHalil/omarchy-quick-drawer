@@ -5,7 +5,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Quick Drawer: one bar mark that opens a centered card of quick toggles,
+// Quick Drawer: one bar mark that opens a card of quick toggles,
 // panel shortcuts and user-defined command tiles.
 //
 // This is a clone of omarchy.indicators on purpose. The clone keeps the
@@ -768,7 +768,10 @@ BarWidget {
     owner: root
     bar: root.bar
     open: root.drawerOpen
-    centerOnBar: true
+    // Anchor under this widget's bar slot. centerOnBar would always put the
+    // card in the middle of the bar, which is wrong once the drawer lives in
+    // the right-hand section.
+    centerOnBar: false
     padding: Style.space(18)
     focusTarget: root.view === "custom" ? customLabel : keyCatcher
     contentWidth: panel.fittedContentWidth(root.view === "grid" ? Style.space(340) : Style.space(460))
