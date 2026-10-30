@@ -2,9 +2,11 @@
 
 A quick-toggle drawer for the [Omarchy](https://omarchy.org) bar.
 
-![Quick Drawer](preview.png)
+![Quick Drawer: one bar mark opens a drawer of quick toggles](preview.png)
 
-![Add tiles](preview-settings.png)
+![The Add tiles catalogue, with a switch for every tile](preview-settings.png)
+
+![Adding a custom command tile with a label, glyph and command](preview-custom.png)
 
 Quick Drawer puts the things you reach for all day — caffeine, night light,
 do-not-disturb, screensaver and suspend — behind one bar mark. Add panel

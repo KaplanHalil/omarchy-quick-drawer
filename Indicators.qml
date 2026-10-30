@@ -1139,7 +1139,7 @@ BarWidget {
     bar: root.bar
     slotSize: Style.bar.iconSlot
     text: "\uf1de"
-    tooltipText: "Quick Settings"
+    tooltipText: "Quick Drawer"
     onPressed: function(button) { root.toggle() }
   }
 
@@ -1197,7 +1197,7 @@ BarWidget {
 
         PanelHeader {
           width: parent.width
-          title: "Quick Settings"
+          title: "Quick Drawer"
           showBack: false
           onAction: root.view = "settings"
         }

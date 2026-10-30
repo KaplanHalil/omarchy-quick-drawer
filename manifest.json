@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.kaplanhalil.quickdrawer",
   "name": "Quick Drawer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Halil Kaplan",
   "license": "MIT",
   "description": "A centered quick-toggle drawer for the Omarchy bar, with a tile catalogue and custom command tiles.",
