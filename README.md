@@ -172,12 +172,6 @@ omarchy plugin remove io.github.kaplanhalil.quickdrawer
 This restores the stock `omarchy.indicators` widget in the same slot and
 unhides any bar icons that panel or extension tiles had moved into the drawer.
 
-## Support
-
-If Quick Drawer is useful to you:
-
-[☕ Buy me a coffee](https://www.buymeacoffee.com/kaplanhalil)
-
 ## Credits
 
 - Derived from Omarchy's `omarchy.indicators` widget

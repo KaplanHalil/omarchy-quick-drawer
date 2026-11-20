@@ -943,10 +943,6 @@ BarWidget {
     runAction(reminderCount > 0 ? "omarchy-reminder show" : "omarchy-reminder -i")
   }
 
-  function openCoffee() {
-    Qt.openUrlExternally("https://www.buymeacoffee.com/kaplanhalil")
-  }
-
   function openGithub() {
     Qt.openUrlExternally("https://github.com/KaplanHalil/omarchy-quick-drawer")
   }
@@ -1029,7 +1025,6 @@ BarWidget {
     function panelHostingStatus(): string { return root.panelHostingStatus() }
     function extensionStatus(): string { return root.extensionStatus() }
     function refreshExtensions(): void { root.refreshExtensions() }
-    function openCoffee(): void { root.openCoffee() }
   }
 
   Process {
@@ -1441,13 +1436,6 @@ BarWidget {
 
         Row {
           spacing: Style.space(8)
-
-          Button {
-            text: "Buy me a coffee"
-            iconText: "☕"
-            bordered: true
-            onClicked: root.openCoffee()
-          }
 
           Button {
             text: "GitHub"
